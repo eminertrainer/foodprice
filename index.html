@@ -26,7 +26,7 @@
       padding: 24px;
     }
     .card {
-      width: min(720px, 95vw);
+      width: min(900px, 95vw);
       background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0));
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 20px;
@@ -95,6 +95,7 @@
     }
     .chip { padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.15); color: var(--text); }
     .hint { font-size: 0.85rem; color: var(--muted); }
+    canvas { margin-top: 20px; width: 100% !important; max-height: 320px; background: #fff; border-radius: 12px; }
   </style>
 </head>
 <body>
@@ -116,13 +117,15 @@
     <div class="actions">
       <button id="predictBtn">Predict</button>
       <button class="secondary" id="resetBtn" title="Clear inputs">Reset</button>
-      <span class="hint">Outputs auto‑update when inputs change.</span>
+      <span class="hint">Outputs auto-update when inputs change.</span>
     </div>
 
     <section class="result" aria-live="polite" aria-atomic="true">
       <h2>Predicted Food Spend</h2>
       <div class="value" id="predicted">—</div>
     </section>
+
+    <canvas id="chart"></canvas>
 
     <pre class="eq" id="eqBlock"></pre>
 
@@ -132,6 +135,7 @@
     </div>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     // === Model parameters (from your fitted regression) ===
     const INTERCEPT = -1.1182946902325481;
@@ -167,13 +171,26 @@
 
       if (!Number.isFinite(income) || !Number.isFinite(family) || incomeEl.value === '' || familyEl.value === '') {
         outEl.textContent = '—';
+        chart.data.labels = [];
+        chart.data.datasets[0].data = [];
+        chart.update();
         return;
       }
 
       let y = INTERCEPT + B_INCOME * income + B_FAMILY * family;
-      // Optional clamp: avoid negative predictions
       if (y < 0) y = 0;
       outEl.textContent = `$ ${r2(y).toFixed(2)}`;
+
+      // Update chart with a small range around the input
+      const incomes = [];
+      const preds = [];
+      for (let i = Math.max(0, income - 20); i <= income + 20; i += 5) {
+        incomes.push(i);
+        preds.push(INTERCEPT + B_INCOME * i + B_FAMILY * family);
+      }
+      chart.data.labels = incomes;
+      chart.data.datasets[0].data = preds;
+      chart.update();
     }
 
     // Wire up interactions
@@ -183,11 +200,40 @@
       incomeEl.value = '';
       familyEl.value = '';
       outEl.textContent = '—';
+      chart.data.labels = [];
+      chart.data.datasets[0].data = [];
+      chart.update();
       incomeEl.focus();
     });
 
-    // Init
+    // Init equation
     renderEquation();
+
+    // Init chart
+    const ctx = document.getElementById('chart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Predicted Food Spend vs Income',
+          data: [],
+          fill: false,
+          borderColor: '#5aa9ff',
+          tension: 0.2
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: '#e8eefc' } }
+        },
+        scales: {
+          x: { title: { display: true, text: 'Income ($)', color: '#e8eefc' }, ticks: { color: '#e8eefc' } },
+          y: { title: { display: true, text: 'Food Spend ($)', color: '#e8eefc' }, ticks: { color: '#e8eefc' } }
+        }
+      }
+    });
   </script>
 </body>
 </html>
