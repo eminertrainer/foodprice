@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Food Spend DSS</title>
+  <style>
+    :root {
+      --bg: #0b1020; /* deep navy */
+      --panel: #141b2d;
+      --text: #e8eefc;
+      --muted: #a9b4d0;
+      --accent: #5aa9ff;
+      --accent-2: #a1f0c4;
+      --danger: #ff7a7a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 600px at 20% -10%, #1a2442, transparent), var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(720px, 95vw);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0));
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      backdrop-filter: blur(6px);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.5rem;
+      letter-spacing: 0.2px;
+    }
+    p.sub {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .field { display: grid; gap: 8px; }
+    label { color: var(--muted); font-size: 0.9rem; }
+    input[type="number"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+    }
+    input[type="number"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(90,169,255,0.15);
+    }
+    .actions {
+      display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
+    }
+    button {
+      appearance: none; border: 0; cursor: pointer;
+      padding: 12px 16px; border-radius: 12px; font-weight: 600;
+      color: #0b1020; background: var(--accent);
+      transition: transform 0.05s ease, filter 0.15s ease;
+    }
+    button.secondary { background: transparent; color: var(--text); border: 1px solid rgba(255,255,255,0.14); }
+    button:active { transform: translateY(1px); }
+    .result {
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(161,240,196,0.08), rgba(161,240,196,0.02));
+      border: 1px solid rgba(161,240,196,0.25);
+    }
+    .result h2 { margin: 0 0 4px; font-size: 1.25rem; color: var(--accent-2); }
+    .result .value { font-size: 2rem; font-weight: 800; letter-spacing: 0.3px; }
+    .eq {
+      margin-top: 18px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      background: rgba(255,255,255,0.04); padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);
+      overflow-x: auto;
+    }
+    .footer {
+      margin-top: 18px; color: var(--muted); font-size: 0.85rem; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    }
+    .chip { padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.15); color: var(--text); }
+    .hint { font-size: 0.85rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="card" role="main">
+    <h1>Food Spend Decision Support System</h1>
+    <p class="sub">Predict expected monthly <strong>food expenditure ($)</strong> from <em>income</em> and <em>family size</em> using a multiple linear regression model.</p>
+
+    <section class="grid" aria-label="Inputs">
+      <div class="field">
+        <label for="income">Income ($)</label>
+        <input id="income" type="number" inputmode="decimal" min="0" step="1" placeholder="e.g., 60" />
+      </div>
+      <div class="field">
+        <label for="family">Family size (persons)</label>
+        <input id="family" type="number" inputmode="numeric" min="1" step="1" placeholder="e.g., 3" />
+      </div>
+    </section>
+
+    <div class="actions">
+      <button id="predictBtn">Predict</button>
+      <button class="secondary" id="resetBtn" title="Clear inputs">Reset</button>
+      <span class="hint">Outputs auto‑update when inputs change.</span>
+    </div>
+
+    <section class="result" aria-live="polite" aria-atomic="true">
+      <h2>Predicted Food Spend</h2>
+      <div class="value" id="predicted">—</div>
+    </section>
+
+    <pre class="eq" id="eqBlock"></pre>
+
+    <div class="footer">
+      <span class="chip" title="Goodness of fit">Model R² ≈ 0.935</span>
+      <span>Trained on 20 observations. Coefficients are embedded below.</span>
+    </div>
+  </main>
+
+  <script>
+    // === Model parameters (from your fitted regression) ===
+    const INTERCEPT = -1.1182946902325481;
+    const B_INCOME  =  0.1482117255469059;
+    const B_FAMILY  =  0.7931054840163823;
+
+    // Round helper
+    const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
+
+    // Elements
+    const incomeEl = document.getElementById('income');
+    const familyEl = document.getElementById('family');
+    const outEl = document.getElementById('predicted');
+    const eqEl = document.getElementById('eqBlock');
+    const predictBtn = document.getElementById('predictBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    // Equation display
+    function renderEquation() {
+      const eq = `Food ($) = ${r2(INTERCEPT)} + ${r2(B_INCOME)}·Income + ${r2(B_FAMILY)}·FamilySize`;
+      const details = [
+        `INTERCEPT = ${INTERCEPT}`,
+        `B_INCOME  = ${B_INCOME}`,
+        `B_FAMILY  = ${B_FAMILY}`
+      ].join('\n');
+      eqEl.textContent = eq + "\n" + details;
+    }
+
+    // Prediction core
+    function predict() {
+      const income = Number(incomeEl.value);
+      const family = Number(familyEl.value);
+
+      if (!Number.isFinite(income) || !Number.isFinite(family) || incomeEl.value === '' || familyEl.value === '') {
+        outEl.textContent = '—';
+        return;
+      }
+
+      let y = INTERCEPT + B_INCOME * income + B_FAMILY * family;
+      // Optional clamp: avoid negative predictions
+      if (y < 0) y = 0;
+      outEl.textContent = `$ ${r2(y).toFixed(2)}`;
+    }
+
+    // Wire up interactions
+    predictBtn.addEventListener('click', predict);
+    [incomeEl, familyEl].forEach(el => el.addEventListener('input', predict));
+    resetBtn.addEventListener('click', () => {
+      incomeEl.value = '';
+      familyEl.value = '';
+      outEl.textContent = '—';
+      incomeEl.focus();
+    });
+
+    // Init
+    renderEquation();
+  </script>
+</body>
+</html>
